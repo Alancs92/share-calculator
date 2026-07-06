@@ -67,6 +67,21 @@ overpaid their own share).
 - (CLI) JSON output by default (agent/script-friendly), with a `--table`
   or similar flag for a human-readable rendering.
 
+## Web app quality bar
+
+Not a "use case" in the sense above, but a standing requirement on the
+web app rather than a one-off nice-to-have:
+
+- **Usable comfortably on a phone**, not just desktop — most people will
+  hit "split the bill" scenarios on their phone, mid-conversation. See
+  `architecture.md`'s mobile/responsive notes and the checklist item in
+  `development-guide.md`.
+- **Light and dark mode**, following the OS preference by default with a
+  manual override.
+- **A built-in how-to guide** (a "?" button opening a short slide-through
+  walkthrough) — the target user is not expected to read documentation
+  first.
+
 ## Non-goals (for now)
 
 These are explicitly out of scope until a future iteration decides

@@ -21,6 +21,10 @@ const PATHS = {
   barChart: '<line x1="5" y1="20.5" x2="5" y2="11"/><line x1="12" y1="20.5" x2="12" y2="5"/><line x1="19" y1="20.5" x2="19" y2="14.5"/>',
   pencil:
     '<path d="M4 16.7V20h3.3L18.4 8.9a1.7 1.7 0 0 0 0-2.4l-1.9-1.9a1.7 1.7 0 0 0-2.4 0z"/><line x1="13.5" y1="6" x2="18.4" y2="10.9"/>',
+  helpCircle:
+    '<circle cx="12" cy="12" r="9.25"/><path d="M9.3 9.3a2.7 2.7 0 1 1 4 2.35c-.7.4-1.3.95-1.3 1.85v.3"/><line x1="12" y1="16.7" x2="12" y2="16.71"/>',
+  chevronLeft: '<polyline points="14.5,5 8,12 14.5,19"/>',
+  chevronRight: '<polyline points="9.5,5 16,12 9.5,19"/>',
 } as const;
 
 export type IconName = keyof typeof PATHS;

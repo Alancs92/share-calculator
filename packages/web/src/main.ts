@@ -27,6 +27,7 @@ import {
   resolveInitialTheme,
   type Theme,
 } from './theme.js';
+import { GUIDE_SLIDES, wrapIndex } from './guide.js';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -41,11 +42,13 @@ let currentTheme: Theme = resolveInitialTheme(
 
 let pasteText = '';
 let pasteMessage = '';
+let guideSlideIndex = 0;
 
 type ActiveModal =
   | { kind: 'paste' }
   | { kind: 'participant'; participantId: string }
   | { kind: 'expense'; expenseId: string | null }
+  | { kind: 'guide' }
   | null;
 
 let activeModal: ActiveModal = null;
@@ -157,6 +160,13 @@ function renderThemeToggle(): HTMLElement {
 
 /* ---------- Header ---------- */
 
+function renderGuideButton(): HTMLElement {
+  const btn = iconButton('helpCircle', 'How to use this', 'btn btn-icon btn-ghost guide-trigger');
+  btn.title = 'How to use this';
+  btn.addEventListener('click', openGuideModal);
+  return btn;
+}
+
 function renderHeader(): HTMLElement {
   const brand = el('div', { className: 'brand' }, [
     el('div', { className: 'brand-icon' }, [icon('calculator')]),
@@ -168,7 +178,11 @@ function renderHeader(): HTMLElement {
       }),
     ]),
   ]);
-  return el('header', { className: 'app-header' }, [brand, renderThemeToggle()]);
+  const actions = el('div', { className: 'header-actions' }, [
+    renderGuideButton(),
+    renderThemeToggle(),
+  ]);
+  return el('header', { className: 'app-header' }, [brand, actions]);
 }
 
 /* ---------- Generic modal ---------- */
@@ -314,6 +328,102 @@ function renderPasteModal(): HTMLElement {
     ],
     onClose,
   });
+}
+
+/* ---------- How-to guide ---------- */
+
+function openGuideModal(): void {
+  activeModal = { kind: 'guide' };
+  guideSlideIndex = 0;
+  render();
+  app.querySelector<HTMLButtonElement>('.guide-next-btn')?.focus();
+}
+
+function goToGuideSlide(index: number): void {
+  guideSlideIndex = wrapIndex(index, GUIDE_SLIDES.length);
+  render();
+  app.querySelector<HTMLButtonElement>('.guide-next-btn')?.focus();
+}
+
+function renderGuideModal(): HTMLElement {
+  const onClose = () => closeModal('.guide-trigger');
+  const slide = GUIDE_SLIDES[guideSlideIndex]!;
+
+  const imageWrap = el('div', { className: 'guide-image-wrap' });
+  imageWrap.append(
+    el('img', {
+      className: 'guide-image',
+      src: slide.image,
+      alt: slide.alt,
+      draggable: false,
+    }),
+  );
+  if (slide.highlight) {
+    const box = el('div', { className: 'guide-highlight' });
+    Object.assign(box.style, slide.highlight);
+    imageWrap.appendChild(box);
+  }
+
+  const caption = el('p', { className: 'guide-caption', text: slide.caption });
+
+  const counter = el('span', {
+    className: 'guide-counter',
+    text: `${guideSlideIndex + 1} / ${GUIDE_SLIDES.length}`,
+  });
+  counter.setAttribute('aria-live', 'polite');
+
+  const prevBtn = iconButton('chevronLeft', 'Previous tip', 'btn btn-icon btn-ghost');
+  prevBtn.addEventListener('click', () => goToGuideSlide(guideSlideIndex - 1));
+
+  const nextBtn = iconButton('chevronRight', 'Next tip', 'btn btn-icon btn-ghost guide-next-btn');
+  nextBtn.addEventListener('click', () => goToGuideSlide(guideSlideIndex + 1));
+
+  const dots = el('div', { className: 'guide-dots' });
+  GUIDE_SLIDES.forEach((_, i) => {
+    const dot = el('button', {
+      type: 'button',
+      className: i === guideSlideIndex ? 'guide-dot is-active' : 'guide-dot',
+    });
+    dot.setAttribute('aria-label', `Go to tip ${i + 1} of ${GUIDE_SLIDES.length}`);
+    dot.addEventListener('click', () => goToGuideSlide(i));
+    dots.appendChild(dot);
+  });
+
+  const nav = el('div', { className: 'guide-nav' }, [prevBtn, dots, nextBtn]);
+
+  const backdrop = createModal({
+    titleId: 'guide-modal-title',
+    titleIcon: 'helpCircle',
+    titleText: slide.title,
+    body: [imageWrap, caption, nav, counter],
+    onClose,
+  });
+  backdrop.classList.add('guide-backdrop');
+  backdrop.querySelector('.modal')?.classList.add('modal-wide');
+
+  backdrop.addEventListener('keydown', (ev) => {
+    if (ev.key === 'ArrowRight') goToGuideSlide(guideSlideIndex + 1);
+    else if (ev.key === 'ArrowLeft') goToGuideSlide(guideSlideIndex - 1);
+  });
+
+  let touchStartX: number | null = null;
+  imageWrap.addEventListener(
+    'touchstart',
+    (ev) => {
+      touchStartX = ev.touches[0]?.clientX ?? null;
+    },
+    { passive: true },
+  );
+  imageWrap.addEventListener('touchend', (ev) => {
+    if (touchStartX === null) return;
+    const endX = ev.changedTouches[0]?.clientX ?? touchStartX;
+    const delta = endX - touchStartX;
+    touchStartX = null;
+    if (Math.abs(delta) < 40) return;
+    goToGuideSlide(guideSlideIndex + (delta < 0 ? 1 : -1));
+  });
+
+  return backdrop;
 }
 
 /* ---------- Participants ---------- */
@@ -827,6 +937,8 @@ function render(): void {
     children.push(renderEditParticipantModal(activeModal.participantId));
   } else if (activeModal?.kind === 'expense') {
     children.push(renderAddOrEditExpenseModal(activeModal.expenseId));
+  } else if (activeModal?.kind === 'guide') {
+    children.push(renderGuideModal());
   }
   app.replaceChildren(...children);
 }

@@ -127,6 +127,15 @@ Before calling a change done:
 - [ ] Any new persistence/concurrency surface has a deliberate, documented
       answer (even if the answer is "last write wins, acceptable here"),
       not an unconsidered default.
+- [ ] Web UI changes checked at a phone-width viewport (~375-390px), not
+      just desktop — new rows/buttons should wrap rather than overflow,
+      and new icon-only buttons should be touch-sized (see
+      `architecture.md`'s mobile/responsive notes). Cheap to check with a
+      quick Playwright screenshot; easy to silently break otherwise.
+- [ ] If the change visibly reshapes a card/dialog the in-app guide
+      references, regenerate that guide screenshot and its highlight-box
+      coordinates (see `decisions/0006-screenshot-based-guide.md`) —
+      otherwise the guide starts pointing at a stale UI.
 - [ ] Relevant doc(s) updated in the same change — spec, architecture, or
       a new ADR — if the change altered the model rather than just
       implementing what was already specified.
