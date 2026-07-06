@@ -1,0 +1,31 @@
+name: Security audit
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  schedule:
+    # Weekly, so newly-disclosed advisories in already-installed
+    # dependencies surface even without a code change to trigger CI.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Fails the job on high/critical advisories. Moderate-and-below are
+      # reported but don't block — see docs/development-guide.md for the
+      # project's stance on dependency hygiene.
+      - name: npm audit (high + critical)
+        run: npm audit --audit-level=high
