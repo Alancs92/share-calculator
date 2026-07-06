@@ -68,6 +68,60 @@ build times or cross-package coordination actually become a problem.
   pattern, or Actions-based Pages deployment — pick whichever needs the
   least ongoing maintenance when we get there) on push to `main`.
 
+### UI implementation (as built)
+
+- Plain DOM manipulation (no framework), one `render()` that rebuilds the
+  whole `#app` subtree from in-memory state on every change. Simple to
+  reason about at this scale; revisit only if re-render cost or state
+  complexity actually becomes a problem.
+- Design system lives entirely in `src/style.css` as CSS custom
+  properties (light/dark tokens, spacing/radius/shadow scale). Dark mode
+  auto-detects `prefers-color-scheme`, is overridable via a header toggle,
+  persisted separately from app state (`theme.ts`), and applied before
+  first paint by a small inline script in `index.html` to avoid a flash of
+  the wrong theme.
+- Icons are static inline SVGs (`icons.ts`) — no icon font or CDN, keeping
+  the zero-extra-dependency static-site goal intact.
+- All modal dialogs (paste-from-chat, edit participant, add/edit expense,
+  the how-to-use guide) share one `createModal()` helper in `main.ts`:
+  backdrop, focus trap, Escape-to-close, click-outside-to-close, and
+  focus restored to the triggering button on close. Add new modals
+  through this helper rather than hand-rolling the same behavior again.
+- **Mobile/responsive**: single fluid column (`max-width: 760px`,
+  centered), so there's no separate mobile layout to maintain — the same
+  markup reflows. Specific things done deliberately for small screens
+  (see `style.css`'s `@media (max-width: 480px)` rules and the
+  flex-wrap on header/card-header/card-actions/form-actions):
+  - Icon-only buttons sized at least 2.1–2.5rem (≈34–40px) for touch;
+    prefer slightly larger over exactly meeting the 44px guideline when
+    space is tight, but never go below ~32px.
+  - Modals cap at `max-height: 100dvh` minus padding and scroll
+    internally, since a phone's on-screen keyboard can otherwise push
+    modal content off-screen with no way to reach it.
+  - The results table is the one place that doesn't reflow to a
+    single column — it stays a real table (for correct semantics and
+    tabular-number alignment) inside a horizontally-scrollable
+    `.table-wrap`, with a narrow-screen media query that tightens
+    padding/font-size/status-pill icon before falling back to scroll.
+  - Any new UI work should be checked at a phone-width viewport (see
+    `development-guide.md`'s checklist) — it's cheap to check and easy to
+    silently break with a new fixed-width element or a `flex` row that
+    doesn't wrap.
+
+### In-app how-to guide
+
+A "?" button in the header opens a slide-by-slide guide (`guide.ts` +
+the guide rendering in `main.ts`): title, a real screenshot of the
+relevant part of the UI, a caption, and an amber highlight box drawn over
+the screenshot to point at the relevant control. Prev/Next buttons, dot
+indicators, keyboard arrow keys, and touch swipe all navigate; it reuses
+the same `createModal()` as every other dialog.
+
+This was a deliberate build choice over alternatives — see
+[`decisions/0006-screenshot-based-guide.md`](decisions/0006-screenshot-based-guide.md)
+for why, and what it costs to maintain (screenshots must be regenerated
+when the relevant part of the UI changes visually).
+
 ## `packages/cli`
 
 - Node.js, minimal dependencies (an argument parser like `commander` is

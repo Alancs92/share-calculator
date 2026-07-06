@@ -66,6 +66,45 @@ completes (or descopes) an item — don't let it drift into aspirational.
   restricting an expense to a subset of participants. These are UI-only
   gaps, not engine gaps — natural next-iteration work.
 
+## Iteration 4.5 — UI/UX polish: theme, redesign, guide, mobile
+
+**Status: done.**
+
+- Full visual redesign: light/dark mode (auto-detect + header toggle,
+  pre-paint applied to avoid a flash of the wrong theme), card-based
+  layout, inline SVG icon set, status pills.
+- Participants and Expenses simplified into compact cards: participants
+  are name chips (exception shown as a short note only when set) with
+  edit/remove icon buttons; editing opens a modal. Expenses are compact
+  cards with edit/remove; add and edit now share one modal form that
+  lists every participant next to an amount field — this replaced an
+  earlier payer-row-plus-dropdown design that read as a near-duplicate of
+  "Add participant" and confused the two.
+- "Paste from chat" moved from an always-visible section into a modal,
+  opened via a button.
+- All modals (paste, edit-participant, add/edit-expense, the guide) share
+  one `createModal()` helper: focus trap, Escape/backdrop-click to close,
+  focus restored to the trigger on close.
+- Adding participants now accepts a comma/semicolon-separated list to add
+  several at once, with a visible hint (not just a placeholder).
+- **In-app how-to guide**: a "?" button opens a slide-through carousel
+  (title, real screenshot, caption, highlighted control), navigable by
+  button, keyboard arrows, dot indicators, or touch swipe. See
+  `decisions/0006-screenshot-based-guide.md` for the design and its
+  maintenance cost (screenshots need regenerating when the UI they show
+  changes visibly).
+- **Mobile-responsive pass**: verified at phone-width viewports (~375-
+  390px) — no page-level horizontal overflow, touch-sized icon buttons,
+  modals cap height and scroll internally, header/card actions wrap
+  instead of overflowing, and the results table tightens its own padding/
+  font-size before falling back to horizontal scroll. See
+  `architecture.md`'s "UI implementation (as built)" section.
+- Verified via Playwright: theme toggle + persistence, all modal
+  interactions (focus trap, Escape, backdrop click, focus restore), the
+  guide's every navigation method including wrap-around, and a full
+  mobile-viewport pass (390×844) with a real add-participants → add-
+  expense → view-results flow — zero console errors throughout.
+
 ## CI
 
 **Status: done (basic).**
@@ -78,9 +117,12 @@ completes (or descopes) an item — don't let it drift into aspirational.
 - `.github/dependabot.yml`: weekly npm + GitHub Actions dependency PRs.
 - `.github/workflows/deploy.yml`: builds `packages/web` and publishes to
   GitHub Pages on push to `main` (path-filtered to web/core changes) or
-  manual dispatch. Untested end-to-end against a real GitHub Pages
-  environment as of this writing — first push to `main` after merge is
-  the real test; watch that run.
+  manual dispatch. Verified end-to-end: needed a one-time manual repo
+  setting (Settings → Pages → Build and deployment → Source: GitHub
+  Actions) before the workflow's `actions/configure-pages` step could
+  create the Pages site — the default `GITHUB_TOKEN` can't create one via
+  the API on its own. After that one-time step, the workflow deploys
+  cleanly. Live at `https://alancs92.github.io/share-calculator/`.
 
 ## Iteration 5 — export & convenience
 
@@ -96,3 +138,5 @@ Needs its own design pass and ADR before starting, not a quick add-on:
   in the UI (engine already supports all three).
 - Any persistent backend for cross-device storage, if local/file-based
   storage turns out to be insufficient in practice.
+- Dark-mode variants of the in-app guide screenshots, if the light-mode-
+  only images read as jarring in practice (see ADR 0006).
