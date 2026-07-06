@@ -35,7 +35,7 @@ jobs:
       - name: Build web app
         run: npm run build --workspace=@share-calculator/web
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           # First deploy to a repo that's never had Pages configured needs this
           # to create the Pages site (source: GitHub Actions) via the API,
