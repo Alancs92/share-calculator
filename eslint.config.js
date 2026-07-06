@@ -22,6 +22,10 @@ export default [
       ...tseslint.configs.recommended.rules,
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+      // TS-only globals (ambient types like Storage, lib.dom.d.ts interfaces used in
+      // type position) trip up no-undef, which doesn't understand TS syntax; the
+      // TypeScript compiler already catches genuinely undefined identifiers.
+      'no-undef': 'off',
     },
   },
   {
