@@ -24,4 +24,30 @@ export default [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    files: ['packages/cli/**/*.ts'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+    rules: {
+      // The CLI's entire job is to print to stdout/stderr.
+      'no-console': 'off',
+    },
+  },
+  {
+    files: ['packages/web/**/*.ts'],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        navigator: 'readonly',
+        localStorage: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+      },
+    },
+  },
 ];
