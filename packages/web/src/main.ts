@@ -15,6 +15,7 @@ import {
   toCalculationInput,
   type AppState,
   type ExceptionKind,
+  type StateExpense,
   type StatePayment,
 } from './state.js';
 import { icon, type IconName } from './icons.js';
@@ -38,16 +39,16 @@ let currentTheme: Theme = resolveInitialTheme(
   window.matchMedia('(prefers-color-scheme: dark)').matches,
 );
 
-// Transient (not persisted) in-progress state for the "add expense" form, kept
-// outside `state` so an unrelated re-render (e.g. editing an exception) doesn't
-// wipe out payer rows the user is still filling in.
-let pendingDescription = '';
-let pendingPayerRows: Array<{ participantId: string; amountText: string }> = [
-  { participantId: '', amountText: '' },
-];
 let pasteText = '';
 let pasteMessage = '';
-let isPasteModalOpen = false;
+
+type ActiveModal =
+  | { kind: 'paste' }
+  | { kind: 'participant'; participantId: string }
+  | { kind: 'expense'; expenseId: string | null }
+  | null;
+
+let activeModal: ActiveModal = null;
 
 const app: HTMLElement =
   document.getElementById('app') ??
@@ -98,6 +99,19 @@ function findExceptionKind(participantId: string): { kind: ExceptionKind; amount
   return exception.amountCents !== undefined
     ? { kind: exception.kind, amountCents: exception.amountCents }
     : { kind: exception.kind };
+}
+
+function exceptionSummaryText(exception: { kind: ExceptionKind; amountCents?: number }): string {
+  switch (exception.kind) {
+    case 'excluded':
+      return "Can't pay";
+    case 'capped':
+      return `Capped at $${centsToDollarsText(exception.amountCents)}`;
+    case 'fixed':
+      return `Fixed at $${centsToDollarsText(exception.amountCents)}`;
+    default:
+      return '';
+  }
 }
 
 function setExceptionKind(participantId: string, kind: ExceptionKind, amountCents?: number): void {
@@ -157,19 +171,7 @@ function renderHeader(): HTMLElement {
   return el('header', { className: 'app-header' }, [brand, renderThemeToggle()]);
 }
 
-/* ---------- Paste-from-chat modal ---------- */
-
-function openPasteModal(): void {
-  isPasteModalOpen = true;
-  render();
-  app.querySelector<HTMLTextAreaElement>('.paste-textarea')?.focus();
-}
-
-function closePasteModal(): void {
-  isPasteModalOpen = false;
-  render();
-  app.querySelector<HTMLButtonElement>('.paste-trigger')?.focus();
-}
+/* ---------- Generic modal ---------- */
 
 function trapFocus(ev: KeyboardEvent, container: HTMLElement): void {
   const focusable = container.querySelectorAll<HTMLElement>(
@@ -187,6 +189,59 @@ function trapFocus(ev: KeyboardEvent, container: HTMLElement): void {
   }
 }
 
+function closeModal(restoreFocusSelector?: string): void {
+  activeModal = null;
+  render();
+  if (restoreFocusSelector) {
+    app.querySelector<HTMLElement>(restoreFocusSelector)?.focus();
+  }
+}
+
+function createModal(opts: {
+  titleId: string;
+  titleIcon: IconName;
+  titleText: string;
+  body: Node[];
+  onClose: () => void;
+}): HTMLElement {
+  const closeBtn = iconButton('x', 'Close');
+  closeBtn.addEventListener('click', opts.onClose);
+
+  const heading = el('h2', { id: opts.titleId }, [
+    icon(opts.titleIcon),
+    el('span', { text: opts.titleText }),
+  ]);
+
+  const modal = el('div', { className: 'modal' });
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', opts.titleId);
+  modal.append(el('div', { className: 'modal-header' }, [heading, closeBtn]), ...opts.body);
+
+  const backdrop = el('div', { className: 'modal-backdrop' }, [modal]);
+  backdrop.addEventListener('mousedown', (ev) => {
+    if (ev.target === backdrop) opts.onClose();
+  });
+  backdrop.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      ev.stopPropagation();
+      opts.onClose();
+    } else if (ev.key === 'Tab') {
+      trapFocus(ev, modal);
+    }
+  });
+
+  return backdrop;
+}
+
+/* ---------- Paste-from-chat modal ---------- */
+
+function openPasteModal(): void {
+  activeModal = { kind: 'paste' };
+  render();
+  app.querySelector<HTMLTextAreaElement>('.paste-textarea')?.focus();
+}
+
 function renderPasteTriggerButton(): HTMLElement {
   const btn = el('button', { type: 'button', className: 'btn btn-sm paste-trigger' }, [
     icon('clipboard'),
@@ -197,6 +252,8 @@ function renderPasteTriggerButton(): HTMLElement {
 }
 
 function renderPasteModal(): HTMLElement {
+  const onClose = () => closeModal('.paste-trigger');
+
   const textarea = el('textarea', {
     className: 'paste-textarea',
     rows: 5,
@@ -239,93 +296,140 @@ function renderPasteModal(): HTMLElement {
     }
     pasteMessage = parts.join(' ');
     saveState(state);
-    closePasteModal();
+    onClose();
   });
 
-  const closeBtn = iconButton('x', 'Close');
-  closeBtn.addEventListener('click', closePasteModal);
-
-  const heading = el('h2', { id: 'paste-modal-title' }, [
-    icon('clipboard'),
-    el('span', { text: 'Paste from chat' }),
-  ]);
-
-  const modal = el('div', { className: 'modal' });
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-labelledby', 'paste-modal-title');
-  modal.append(
-    el('div', { className: 'modal-header' }, [heading, closeBtn]),
-    el('p', {
-      className: 'modal-hint',
-      text: 'Supports commas, new lines, semicolons, or bullet points — paste straight from a chat.',
-    }),
-    textarea,
-    parseBtn,
-    message,
-  );
-
-  const backdrop = el('div', { className: 'modal-backdrop' }, [modal]);
-  backdrop.addEventListener('mousedown', (ev) => {
-    if (ev.target === backdrop) closePasteModal();
+  return createModal({
+    titleId: 'paste-modal-title',
+    titleIcon: 'clipboard',
+    titleText: 'Paste from chat',
+    body: [
+      el('p', {
+        className: 'modal-hint',
+        text: 'Supports commas, new lines, semicolons, or bullet points — paste straight from a chat.',
+      }),
+      textarea,
+      parseBtn,
+      message,
+    ],
+    onClose,
   });
-  backdrop.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') {
-      ev.stopPropagation();
-      closePasteModal();
-    } else if (ev.key === 'Tab') {
-      trapFocus(ev, modal);
-    }
-  });
-
-  return backdrop;
 }
 
 /* ---------- Participants ---------- */
 
+function openParticipantModal(participantId: string): void {
+  activeModal = { kind: 'participant', participantId };
+  render();
+  app.querySelector<HTMLInputElement>('.edit-participant-name')?.focus();
+}
+
+function renderEditParticipantModal(participantId: string): HTMLElement {
+  const restoreSelector = `[data-edit-participant-btn="${participantId}"]`;
+  const onClose = () => closeModal(restoreSelector);
+  const participant = state.participants.find((p) => p.id === participantId);
+
+  if (!participant) {
+    return createModal({
+      titleId: 'edit-participant-title',
+      titleIcon: 'users',
+      titleText: 'Edit participant',
+      body: [el('p', { text: 'This participant no longer exists.' })],
+      onClose,
+    });
+  }
+
+  const nameInput = el('input', {
+    type: 'text',
+    id: 'edit-participant-name',
+    className: 'edit-participant-name',
+  });
+  nameInput.value = participant.name;
+  const nameLabel = el('label', { text: 'Name', htmlFor: 'edit-participant-name' });
+
+  const current = findExceptionKind(participantId);
+  const kindSelect = el('select', { id: 'edit-participant-kind' });
+  const kindLabels: Record<ExceptionKind, string> = {
+    none: 'No exception',
+    excluded: "Can't pay",
+    capped: 'Capped at',
+    fixed: 'Fixed at',
+  };
+  for (const kind of Object.keys(kindLabels) as ExceptionKind[]) {
+    const opt = el('option', { text: kindLabels[kind], value: kind });
+    if (kind === current.kind) opt.selected = true;
+    kindSelect.appendChild(opt);
+  }
+  const kindLabel = el('label', { text: 'Payment exception', htmlFor: 'edit-participant-kind' });
+
+  const showAmount = current.kind === 'capped' || current.kind === 'fixed';
+  const amountInput = el('input', {
+    type: 'number',
+    step: '0.01',
+    min: '0',
+    id: 'edit-participant-amount',
+    placeholder: '0.00',
+  });
+  amountInput.value = centsToDollarsText(current.amountCents);
+  amountInput.style.display = showAmount ? '' : 'none';
+  const amountLabel = el('label', { text: 'Amount', htmlFor: 'edit-participant-amount' });
+  amountLabel.style.display = showAmount ? '' : 'none';
+
+  kindSelect.addEventListener('change', () => {
+    const show = kindSelect.value === 'capped' || kindSelect.value === 'fixed';
+    amountInput.style.display = show ? '' : 'none';
+    amountLabel.style.display = show ? '' : 'none';
+  });
+
+  const saveBtn = el('button', { type: 'submit', className: 'btn btn-primary' }, [
+    icon('check'),
+    el('span', { text: 'Save' }),
+  ]);
+
+  const form = el('form', { className: 'edit-form' }, [
+    nameLabel,
+    nameInput,
+    kindLabel,
+    kindSelect,
+    amountLabel,
+    amountInput,
+    saveBtn,
+  ]);
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const newName = nameInput.value.trim();
+    state = {
+      ...state,
+      participants: state.participants.map((p) =>
+        p.id === participantId ? { ...p, name: newName || p.name } : p,
+      ),
+    };
+    setExceptionKind(participantId, kindSelect.value as ExceptionKind, dollarsToCents(amountInput.value));
+    saveState(state);
+    onClose();
+  });
+
+  return createModal({
+    titleId: 'edit-participant-title',
+    titleIcon: 'users',
+    titleText: `Edit ${participant.name}`,
+    body: [form],
+    onClose,
+  });
+}
+
 function renderParticipantsSection(): HTMLElement {
-  const list = el('ul', { className: 'participant-list' });
+  const grid = el('ul', { className: 'people-grid' });
 
   for (const p of state.participants) {
     const current = findExceptionKind(p.id);
+    const note = exceptionSummaryText(current);
 
-    const kindSelect = el('select', { className: 'exception-kind' });
-    kindSelect.setAttribute('aria-label', `Payment exception for ${p.name}`);
-    const kindLabels: Record<ExceptionKind, string> = {
-      none: 'No exception',
-      excluded: "Can't pay",
-      capped: 'Capped at',
-      fixed: 'Fixed at',
-    };
-    for (const kind of Object.keys(kindLabels) as ExceptionKind[]) {
-      const opt = el('option', { text: kindLabels[kind], value: kind });
-      if (kind === current.kind) opt.selected = true;
-      kindSelect.appendChild(opt);
-    }
+    const editBtn = iconButton('pencil', `Edit ${p.name}`, 'btn btn-icon btn-ghost btn-sm');
+    editBtn.dataset.editParticipantBtn = p.id;
+    editBtn.addEventListener('click', () => openParticipantModal(p.id));
 
-    const amountInput = el('input', {
-      type: 'number',
-      step: '0.01',
-      min: '0',
-      className: 'exception-amount',
-      placeholder: '0.00',
-    });
-    amountInput.setAttribute('aria-label', `Exception amount for ${p.name}`);
-    amountInput.value = centsToDollarsText(current.amountCents);
-    amountInput.style.display = current.kind === 'capped' || current.kind === 'fixed' ? '' : 'none';
-
-    kindSelect.addEventListener('change', () => {
-      const kind = kindSelect.value as ExceptionKind;
-      amountInput.style.display = kind === 'capped' || kind === 'fixed' ? '' : 'none';
-      setExceptionKind(p.id, kind, dollarsToCents(amountInput.value));
-      persistAndRender();
-    });
-    amountInput.addEventListener('change', () => {
-      setExceptionKind(p.id, kindSelect.value as ExceptionKind, dollarsToCents(amountInput.value));
-      persistAndRender();
-    });
-
-    const removeBtn = iconButton('trash', `Remove ${p.name}`, 'btn btn-icon btn-danger-ghost');
+    const removeBtn = iconButton('trash', `Remove ${p.name}`, 'btn btn-icon btn-danger-ghost btn-sm');
     removeBtn.addEventListener('click', () => {
       state = {
         ...state,
@@ -339,12 +443,13 @@ function renderParticipantsSection(): HTMLElement {
       persistAndRender();
     });
 
-    list.appendChild(
-      el('li', { className: 'participant-row' }, [
-        el('span', { text: p.name, className: 'participant-name' }),
-        kindSelect,
-        amountInput,
-        removeBtn,
+    grid.appendChild(
+      el('li', { className: 'person-card' }, [
+        el('div', { className: 'person-info' }, [
+          el('span', { className: 'person-name', text: p.name }),
+          ...(note ? [el('span', { className: 'person-note', text: note })] : []),
+        ]),
+        el('div', { className: 'person-actions' }, [editBtn, removeBtn]),
       ]),
     );
   }
@@ -352,11 +457,11 @@ function renderParticipantsSection(): HTMLElement {
   const nameInput = el('input', {
     type: 'text',
     id: 'new-participant-name',
-    placeholder: 'e.g. Jenny',
+    placeholder: 'e.g. Jenny, Paul, Linda',
     className: 'new-participant-name',
   });
   const nameLabel = el('label', {
-    text: 'Participant name',
+    text: 'Participant name(s)',
     className: 'visually-hidden',
     htmlFor: 'new-participant-name',
   });
@@ -370,9 +475,15 @@ function renderParticipantsSection(): HTMLElement {
   ]);
   addForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
-    const name = nameInput.value.trim();
-    if (!name) return;
-    state = { ...state, participants: [...state.participants, { id: generateId(), name }] };
+    const names = nameInput.value
+      .split(/[,;]/)
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+    if (names.length === 0) return;
+    state = {
+      ...state,
+      participants: [...state.participants, ...names.map((name) => ({ id: generateId(), name }))],
+    };
     nameInput.value = '';
     persistAndRender();
   });
@@ -387,121 +498,139 @@ function renderParticipantsSection(): HTMLElement {
       ]),
     ]),
     state.participants.length > 0
-      ? list
+      ? grid
       : el('p', {
           className: 'empty-state',
           text: 'No participants yet — add the people sharing this cost below.',
         }),
     addForm,
+    el('p', {
+      className: 'field-hint',
+      text: 'Tip: separate multiple names with a comma or semicolon to add them all at once.',
+    }),
   );
   return card;
 }
 
 /* ---------- Expenses ---------- */
 
-function renderAddExpenseForm(): HTMLElement {
+function openExpenseModal(expenseId: string | null): void {
+  activeModal = { kind: 'expense', expenseId };
+  render();
+  app.querySelector<HTMLInputElement>('.expense-description')?.focus();
+}
+
+function renderExpenseForm(existing: StateExpense | undefined, onDone: () => void): HTMLElement {
+  if (state.participants.length === 0) {
+    return el('p', {
+      className: 'empty-state',
+      text: 'Add at least one participant before adding an expense.',
+    });
+  }
+
+  const isEdit = existing !== undefined;
   const descInput = el('input', {
     type: 'text',
     id: 'expense-description',
     placeholder: 'Description (optional)',
     className: 'expense-description',
   });
+  descInput.value = existing?.description ?? '';
   const descLabel = el('label', {
     text: 'Expense description',
     className: 'visually-hidden',
     htmlFor: 'expense-description',
   });
-  descInput.value = pendingDescription;
-  descInput.addEventListener('input', () => {
-    pendingDescription = descInput.value;
-  });
 
-  const rowsContainer = el('div', { className: 'payer-rows' });
-  pendingPayerRows.forEach((row, index) => {
-    const select = el('select', { className: 'payer-select' });
-    select.setAttribute('aria-label', `Payer ${index + 1}`);
-    select.appendChild(el('option', { text: '-- choose participant --', value: '' }));
-    for (const p of state.participants) {
-      const opt = el('option', { text: p.name, value: p.id });
-      if (p.id === row.participantId) opt.selected = true;
-      select.appendChild(opt);
-    }
-    select.addEventListener('change', () => {
-      row.participantId = select.value;
-    });
+  const existingAmounts = new Map(
+    (existing?.paidBy ?? []).map((p) => [p.participantId, centsToDollarsText(p.amountCents)]),
+  );
 
+  const rows = el('div', { className: 'payer-fields' });
+  for (const p of state.participants) {
+    const inputId = `payer-amount-${p.id}`;
     const amountInput = el('input', {
       type: 'number',
       step: '0.01',
       min: '0',
-      placeholder: 'Amount paid',
-      className: 'payer-amount',
+      id: inputId,
+      placeholder: '0.00',
+      className: 'payer-amount-field',
     });
-    amountInput.setAttribute('aria-label', `Amount paid by payer ${index + 1}`);
-    amountInput.value = row.amountText;
-    amountInput.addEventListener('input', () => {
-      row.amountText = amountInput.value;
-    });
-
-    const removeRowBtn = iconButton('x', `Remove payer ${index + 1}`, 'btn btn-icon btn-ghost btn-sm');
-    removeRowBtn.addEventListener('click', () => {
-      pendingPayerRows.splice(index, 1);
-      if (pendingPayerRows.length === 0) {
-        pendingPayerRows.push({ participantId: '', amountText: '' });
-      }
-      render();
-    });
-
-    rowsContainer.appendChild(el('div', { className: 'payer-row' }, [select, amountInput, removeRowBtn]));
-  });
-
-  const addRowBtn = el('button', { type: 'button', className: 'btn btn-ghost btn-sm' }, [
-    icon('plus'),
-    el('span', { text: 'Add payer' }),
-  ]);
-  addRowBtn.addEventListener('click', () => {
-    pendingPayerRows.push({ participantId: '', amountText: '' });
-    render();
-  });
+    amountInput.dataset.participantId = p.id;
+    amountInput.value = existingAmounts.get(p.id) ?? '';
+    const label = el('label', { text: p.name, htmlFor: inputId, className: 'payer-field-label' });
+    rows.appendChild(el('div', { className: 'payer-field-row' }, [label, amountInput]));
+  }
 
   const errorBox = el('p', { className: 'form-error' });
   const submitBtn = el('button', { type: 'submit', className: 'btn btn-primary' }, [
-    icon('plus'),
-    el('span', { text: 'Add expense' }),
+    icon(isEdit ? 'check' : 'plus'),
+    el('span', { text: isEdit ? 'Save changes' : 'Add expense' }),
   ]);
 
-  const form = el('form', { className: 'add-expense-form' }, [
+  const form = el('form', { className: 'expense-form' }, [
     descLabel,
     descInput,
-    rowsContainer,
-    el('div', { className: 'expense-form-actions' }, [addRowBtn, submitBtn]),
+    el('p', {
+      className: 'field-hint',
+      text: "Enter how much each person paid toward this expense. Leave blank for anyone who didn't pay.",
+    }),
+    rows,
+    el('div', { className: 'expense-form-actions' }, [submitBtn]),
     errorBox,
   ]);
+
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const paidBy: StatePayment[] = [];
-    for (const row of pendingPayerRows) {
-      const amountCents = dollarsToCents(row.amountText);
-      if (!row.participantId || amountCents === undefined || amountCents <= 0) continue;
-      paidBy.push({ participantId: row.participantId, amountCents });
-    }
+    form.querySelectorAll<HTMLInputElement>('.payer-amount-field').forEach((input) => {
+      const participantId = input.dataset.participantId;
+      const amountCents = dollarsToCents(input.value);
+      if (participantId && amountCents !== undefined && amountCents > 0) {
+        paidBy.push({ participantId, amountCents });
+      }
+    });
     if (paidBy.length === 0) {
-      errorBox.textContent = 'Add at least one payer with a participant and a positive amount.';
+      errorBox.textContent = 'Enter an amount for at least one payer.';
       return;
     }
-    state = {
-      ...state,
-      expenses: [
-        ...state.expenses,
-        { id: generateId(), description: pendingDescription.trim(), paidBy },
-      ],
-    };
-    pendingDescription = '';
-    pendingPayerRows = [{ participantId: '', amountText: '' }];
-    persistAndRender();
+    const description = descInput.value.trim();
+    if (isEdit) {
+      state = {
+        ...state,
+        expenses: state.expenses.map((e) =>
+          e.id === existing.id ? { ...e, description, paidBy } : e,
+        ),
+      };
+    } else {
+      state = {
+        ...state,
+        expenses: [...state.expenses, { id: generateId(), description, paidBy }],
+      };
+    }
+    saveState(state);
+    onDone();
   });
 
   return form;
+}
+
+function renderAddOrEditExpenseModal(expenseId: string | null): HTMLElement {
+  const existing = expenseId ? state.expenses.find((e) => e.id === expenseId) : undefined;
+  const restoreSelector = expenseId
+    ? `[data-edit-expense-btn="${expenseId}"]`
+    : '.add-expense-trigger';
+  const onClose = () => closeModal(restoreSelector);
+  const form = renderExpenseForm(existing, onClose);
+
+  return createModal({
+    titleId: 'expense-modal-title',
+    titleIcon: 'file',
+    titleText: existing ? 'Edit expense' : 'Add expense',
+    body: [form],
+    onClose,
+  });
 }
 
 function renderExpensesSection(): HTMLElement {
@@ -516,10 +645,18 @@ function renderExpensesSection(): HTMLElement {
       })
       .join(', ');
 
+    const editBtn = iconButton(
+      'pencil',
+      `Edit expense ${e.description || '(no description)'}`,
+      'btn btn-icon btn-ghost btn-sm',
+    );
+    editBtn.dataset.editExpenseBtn = e.id;
+    editBtn.addEventListener('click', () => openExpenseModal(e.id));
+
     const removeBtn = iconButton(
       'trash',
       `Remove expense ${e.description || '(no description)'}`,
-      'btn btn-icon btn-danger-ghost',
+      'btn btn-icon btn-danger-ghost btn-sm',
     );
     removeBtn.addEventListener('click', () => {
       state = { ...state, expenses: state.expenses.filter((x) => x.id !== e.id) };
@@ -527,18 +664,25 @@ function renderExpensesSection(): HTMLElement {
     });
 
     list.appendChild(
-      el('li', { className: 'expense-row' }, [
-        el('div', { className: 'expense-details' }, [
-          el('div', { className: 'expense-summary' }, [
+      el('li', { className: 'expense-card' }, [
+        el('div', { className: 'expense-info' }, [
+          el('div', { className: 'expense-title-row' }, [
             el('strong', { text: e.description || '(no description)' }),
             el('span', { className: 'expense-total', text: `$${centsToDollarsText(total)}` }),
           ]),
           el('div', { className: 'expense-payers', text: `Paid by: ${payerText}` }),
         ]),
-        removeBtn,
+        el('div', { className: 'expense-actions' }, [editBtn, removeBtn]),
       ]),
     );
   }
+
+  const addExpenseBtn = el(
+    'button',
+    { type: 'button', className: 'btn btn-primary btn-sm add-expense-trigger' },
+    [icon('plus'), el('span', { text: 'Add expense' })],
+  );
+  addExpenseBtn.addEventListener('click', () => openExpenseModal(null));
 
   const card = el('section', { className: 'card' });
   card.append(
@@ -548,15 +692,14 @@ function renderExpensesSection(): HTMLElement {
         el('span', { text: 'Expenses' }),
         el('span', { className: 'count', text: `(${state.expenses.length})` }),
       ]),
-      el('div', { className: 'card-actions' }, [renderPasteTriggerButton()]),
+      el('div', { className: 'card-actions' }, [renderPasteTriggerButton(), addExpenseBtn]),
     ]),
     state.expenses.length > 0
       ? list
       : el('p', {
           className: 'empty-state',
-          text: 'No expenses yet — add one below, or paste from a chat.',
+          text: 'No expenses yet — add one, or paste from a chat.',
         }),
-    renderAddExpenseForm(),
   );
   return card;
 }
@@ -678,8 +821,12 @@ function render(): void {
     renderExpensesSection(),
     renderResultsSection(),
   ];
-  if (isPasteModalOpen) {
+  if (activeModal?.kind === 'paste') {
     children.push(renderPasteModal());
+  } else if (activeModal?.kind === 'participant') {
+    children.push(renderEditParticipantModal(activeModal.participantId));
+  } else if (activeModal?.kind === 'expense') {
+    children.push(renderAddOrEditExpenseModal(activeModal.expenseId));
   }
   app.replaceChildren(...children);
 }

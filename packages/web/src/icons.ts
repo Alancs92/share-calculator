@@ -19,6 +19,8 @@ const PATHS = {
     '<circle cx="9" cy="8" r="3.2"/><path d="M3.2 19.5a5.8 5.8 0 0 1 11.6 0"/><circle cx="17.2" cy="9" r="2.3"/><path d="M15.6 19.5a4.2 4.2 0 0 1 6-3.6"/>',
   file: '<path d="M6.5 3h7l4 4v13a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13.5 3v4h4"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="15.5" x2="13.5" y2="15.5"/>',
   barChart: '<line x1="5" y1="20.5" x2="5" y2="11"/><line x1="12" y1="20.5" x2="12" y2="5"/><line x1="19" y1="20.5" x2="19" y2="14.5"/>',
+  pencil:
+    '<path d="M4 16.7V20h3.3L18.4 8.9a1.7 1.7 0 0 0 0-2.4l-1.9-1.9a1.7 1.7 0 0 0-2.4 0z"/><line x1="13.5" y1="6" x2="18.4" y2="10.9"/>',
 } as const;
 
 export type IconName = keyof typeof PATHS;
