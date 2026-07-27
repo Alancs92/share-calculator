@@ -21,7 +21,7 @@ export function runCalculate(rawInput: string, options: CalculateOptions = {}): 
   try {
     input = JSON.parse(rawInput) as CalculationInput;
   } catch (err) {
-    throw new Error(`Invalid JSON input: ${(err as Error).message}`);
+    throw new Error(`Invalid JSON input: ${(err as Error).message}`, { cause: err });
   }
 
   const result = calculate(input);
@@ -51,7 +51,7 @@ export function runParse(rawText: string, participantsRaw?: string): string {
   try {
     participants = JSON.parse(participantsRaw) as Participant[];
   } catch (err) {
-    throw new Error(`Invalid participants JSON: ${(err as Error).message}`);
+    throw new Error(`Invalid participants JSON: ${(err as Error).message}`, { cause: err });
   }
 
   const { matched, unmatched } = matchToParticipants(result.entries, participants);
