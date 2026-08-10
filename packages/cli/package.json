@@ -16,7 +16,7 @@
     "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
-    "vitest": "^4.1.9"
+    "@types/node": "^26.1.2",
+    "vitest": "^4.1.10"
   }
 }
