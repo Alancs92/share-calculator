@@ -47,6 +47,48 @@ correctness bug in someone's money, so hold it to a higher bar.
   silently break another (e.g. the rounding invariant) — the invariant
   tests exist specifically to catch that.
 
+## Dependency budget
+
+**All three packages have zero runtime dependencies.** `core` and `web`
+never had any; `cli` dropped its last one (Commander) in favour of Node's
+built-in `node:util.parseArgs` — see
+[`decisions/0007-zero-runtime-dependencies.md`](decisions/0007-zero-runtime-dependencies.md).
+Nothing in `node_modules` reaches a user's browser or a CLI install; it is
+all build/test tooling.
+
+The dev toolchain is deliberately six direct packages, declared once at the
+repo root (not per workspace, so there is one version of each and one
+Dependabot PR per bump):
+
+| Package                                     | Why it's here                                          |
+| ------------------------------------------- | ------------------------------------------------------ |
+| `typescript`                                | The language (ADR 0002).                               |
+| `vite`                                      | Web app bundler/dev server.                            |
+| `vitest`                                    | Test runner; reuses the Vite pipeline already present. |
+| `eslint` + `@eslint/js`                     | Linting.                                               |
+| `@typescript-eslint/{parser,eslint-plugin}` | TypeScript rules for ESLint.                           |
+| `@types/node`                               | Node typings for the CLI.                              |
+| `prettier`                                  | Formatting (zero transitive dependencies of its own).  |
+
+Before adding anything — runtime _or_ dev — check in this order:
+
+1. **Does Node or the platform already do it?** `node:util.parseArgs`,
+   `structuredClone`, `Intl.NumberFormat`, `node:test`, and `crypto.randomUUID`
+   have each removed a plausible dependency from this repo's design.
+2. **Is it a runtime dependency?** Then it needs an ADR. The zero-runtime-
+   dependency property is worth defending explicitly, not eroding by
+   default; the bar is "the platform genuinely can't do this and writing it
+   ourselves would be worse."
+3. **Is it a dev dependency?** Lower bar, but it still costs a weekly
+   Dependabot PR, CI minutes, and `npm audit` surface — both high-severity
+   advisories this repo has had to fix came in through dev tooling
+   (`eslint` → `brace-expansion`, `vite` → `postcss` → `nanoid`).
+4. **Declare it at the repo root**, not in a workspace, unless it genuinely
+   belongs to only one package and would otherwise be ambiguous.
+
+Run `npm ls --all --parseable | wc -l` for the current installed-package
+count if you want a number to hold yourself to.
+
 ## Design considerations
 
 - Keep `packages/core` free of DOM/Node/browser APIs and free of runtime
@@ -101,6 +143,7 @@ collaboration) has a small surface for this, but don't skip the check:
   count minimal (this is also an architecture goal, see above) and run
   `npm audit` (or equivalent) as part of CI once CI exists — fewer
   dependencies is itself the biggest lever here, not just scanning.
+  See "Dependency budget" below for where that currently stands.
 - **No secrets in the repo.** There shouldn't be any for this project as
   scoped (no backend, no API keys) — if a future iteration adds one
   (e.g. a backend credential), it goes in environment variables /

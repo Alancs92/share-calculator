@@ -124,8 +124,9 @@ when the relevant part of the UI changes visually).
 
 ## `packages/cli`
 
-- Node.js, minimal dependencies (an argument parser like `commander` is
-  reasonable; avoid anything heavier).
+- Node.js, **zero runtime dependencies** — argument parsing uses Node's
+  built-in `node:util.parseArgs` rather than a library. See
+  [`decisions/0007-zero-runtime-dependencies.md`](decisions/0007-zero-runtime-dependencies.md).
 - Default output: JSON — this is the "for agents" requirement. An agent
   should be able to pipe participants/expenses in and get structured data
   back without scraping text.

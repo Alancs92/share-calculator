@@ -37,8 +37,10 @@ completes (or descopes) an item — don't let it drift into aspirational.
 
 - `packages/cli` (`share-calc`): `calculate` (JSON in, JSON/table/whatsapp
   out) and `parse` (chat text in, matched/unmatched entries out) commands.
-  Command logic is pure/testable (`commands.ts`); `index.ts` is thin
-  commander wiring.
+  Command logic is pure/testable (`commands.ts`), argument parsing is pure
+  (`args.ts`, on `node:util.parseArgs`), I/O is injectable (`run.ts`), and
+  `index.ts` is a four-line shim. No runtime dependencies — see
+  [`decisions/0007-zero-runtime-dependencies.md`](decisions/0007-zero-runtime-dependencies.md).
 
 ## Iteration 4 — web app (MVP)
 
@@ -115,6 +117,10 @@ completes (or descopes) an item — don't let it drift into aspirational.
   on every push/PR plus a weekly schedule, so newly-disclosed advisories
   in already-installed dependencies surface without needing a code change.
 - `.github/dependabot.yml`: weekly npm + GitHub Actions dependency PRs.
+  TypeScript major bumps are ignored: typescript-eslint 8.x peer-depends on
+  `typescript >=4.8.4 <6.1.0`, so a TypeScript 7 PR breaks `npm ci`
+  resolution and fails every job. Drop the ignore once typescript-eslint
+  supports the next major.
 - `.github/workflows/deploy.yml`: builds `packages/web` and publishes to
   GitHub Pages on push to `main` (path-filtered to web/core changes) or
   manual dispatch. Verified end-to-end: needed a one-time manual repo
