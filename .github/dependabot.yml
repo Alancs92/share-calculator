@@ -7,6 +7,14 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: 'development'
+    ignore:
+      # typescript-eslint 8.x peer-depends on `typescript >=4.8.4 <6.1.0`, so a
+      # TypeScript major bump makes `npm ci` fail to resolve and takes every CI
+      # job down with it. Moving off TypeScript 5 is a deliberate decision to
+      # make once typescript-eslint supports the new major — not an automated
+      # weekly PR. Minor/patch TypeScript updates still come through.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: 'github-actions'
     directory: '/'

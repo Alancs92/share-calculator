@@ -12,11 +12,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@share-calculator/core": "*",
-    "commander": "^15.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.9.0",
-    "vitest": "^4.1.9"
+    "@share-calculator/core": "*"
   }
 }
