@@ -2,18 +2,33 @@ name: Security audit
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     branches: ['**']
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   schedule:
     # Weekly, so newly-disclosed advisories in already-installed
     # dependencies surface even without a code change to trigger CI.
     - cron: '0 6 * * 1'
   workflow_dispatch: {}
 
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   npm-audit:
+    # Skip while the PR is a draft; the scheduled run still catches new
+    # advisories regardless (github.event.pull_request is unset there).
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
