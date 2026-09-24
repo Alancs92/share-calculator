@@ -2,9 +2,17 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     branches: ['**']
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch: {}
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -12,7 +20,11 @@ concurrency:
 
 jobs:
   lint-typecheck-test-build:
+    # Skip while the PR is a draft; a skipped job costs nothing and CI still
+    # runs on push (github.event.pull_request is unset there, so this is true).
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
